@@ -36,8 +36,8 @@
 typedef struct
 {
   long  type;
-  int   expediteur;
-  int   requete;
+  int   expediteur; // c'est moi 
+  int   requete;// une des valeur constantes en haut (CONNECT,..)
   int   data1;
   char  data2[20];
   char  data3[20];

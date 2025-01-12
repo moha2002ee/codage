@@ -14,70 +14,105 @@ using namespace std;
 #include <signal.h>
 
 extern WindowClient *w;
-
+/* declaration et initialisation*/
 int idQ, idShm;
 bool logged;
-char* pShm;
+char *pShm;
 ARTICLE articleEnCours;
 float totalCaddie = 0.0;
+MESSAGE requete;
 
+/* fonction */
 void handlerSIGUSR1(int sig);
 void handlerSIGUSR2(int sig);
+MESSAGE buildMyRequete(int nbrElement, long type, int expediteur, int typeRequete, int d1, const char *d2, const char *d3, const char *d4, float d5);
+void copyChaine(char *destinitation, const char *source);
 
+/* define */
 #define REPERTOIRE_IMAGES "images/"
 
 WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::WindowClient)
 {
-    ui->setupUi(this);
+  ui->setupUi(this);
 
-    // Configuration de la table du panier (ne pas modifer)
-    ui->tableWidgetPanier->setColumnCount(3);
-    ui->tableWidgetPanier->setRowCount(0);
-    QStringList labelsTablePanier;
-    labelsTablePanier << "Article" << "Prix à l'unité" << "Quantité";
-    ui->tableWidgetPanier->setHorizontalHeaderLabels(labelsTablePanier);
-    ui->tableWidgetPanier->setSelectionMode(QAbstractItemView::SingleSelection);
-    ui->tableWidgetPanier->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->tableWidgetPanier->horizontalHeader()->setVisible(true);
-    ui->tableWidgetPanier->horizontalHeader()->setDefaultSectionSize(160);
-    ui->tableWidgetPanier->horizontalHeader()->setStretchLastSection(true);
-    ui->tableWidgetPanier->verticalHeader()->setVisible(false);
-    ui->tableWidgetPanier->horizontalHeader()->setStyleSheet("background-color: lightyellow");
+  // Configuration de la table du panier (ne pas modifer)
+  ui->tableWidgetPanier->setColumnCount(3);
+  ui->tableWidgetPanier->setRowCount(0);
+  QStringList labelsTablePanier;
+  labelsTablePanier << "Article"
+                    << "Prix à l'unité"
+                    << "Quantité";
+  ui->tableWidgetPanier->setHorizontalHeaderLabels(labelsTablePanier);
+  ui->tableWidgetPanier->setSelectionMode(QAbstractItemView::SingleSelection);
+  ui->tableWidgetPanier->setSelectionBehavior(QAbstractItemView::SelectRows);
+  ui->tableWidgetPanier->horizontalHeader()->setVisible(true);
+  ui->tableWidgetPanier->horizontalHeader()->setDefaultSectionSize(160);
+  ui->tableWidgetPanier->horizontalHeader()->setStretchLastSection(true);
+  ui->tableWidgetPanier->verticalHeader()->setVisible(false);
+  ui->tableWidgetPanier->horizontalHeader()->setStyleSheet("background-color: lightyellow");
 
-    // Recuperation de l'identifiant de la file de messages
-    //fprintf(stderr,"(CLIENT %d) Recuperation de l'id de la file de messages\n",getpid());
-    // TO DO
+  // Recuperation de l'identifiant de la file de messages // Etape 1
+  fprintf(stderr, "(CLIENT %d) Recuperation de l'id de la file de messages\n", getpid());
+  // TO DO
+  if ((idQ = msgget(CLE, 0)) = -1)
+  {
+    perror("(CLIENT %d) Recuperation de l'id de la file de messages (Errreur) \n");
+  }
 
-    // Recuperation de l'identifiant de la mémoire partagée
-    //fprintf(stderr,"(CLIENT %d) Recuperation de l'id de la mémoire partagée\n",getpid());
-    // TO DO
+  // Recuperation de l'identifiant de la mémoire partagée
+  //fprintf(stderr,"(CLIENT %d) Recuperation de l'id de la mémoire partagée\n",getpid());
+  // TO DO
 
-    // Attachement à la mémoire partagée
-    // TO DO
+  // Attachement à la mémoire partagée
+  // TO DO
 
-    // Armement des signaux
-    // TO DO
+  // Armement des signaux
+  // TO DO
+  struct sigaction A;
+  A.sa_handler = handlerSIGUSR1;
+  sigemptyset(&A.sa_mask);
+  A.sa_flags = 0;
 
-    // Envoi d'une requete de connexion au serveur
-    // TO DO
+  if (sigaction(SIGUSR1, &A, NULL) == -1)
+  {
+    perror("(CLIENT)Erreur de sigaction SIGUSR1");
+  }
 
-    // Exemples à supprimer
-    setPublicite("Promotions sur les concombres !!!");
-    setArticle("pommes",5.53,18,"pommes.jpg");
-    ajouteArticleTablePanier("cerises",8.96,2);
+  struct sigaction B;
+  B.sa_handler = handlerSIGUSR2;
+  sigemptyset(&B.sa_mask);
+  B.sa_flags = 0;
+
+  if (sigaction(SIGUSR2, &B, NULL) == -1)
+  {
+    perror("(CLIENT)Erreur de sigaction SIGUSR2");
+  }
+
+  // Envoi d'une requete de connexion au serveur
+  // TO DO
+  requete = buildMyRequete(3, 1, getpid(), CONNECT, 0, nullptr, nullptr, nullptr, 0.0);
+  if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
+    perror("(CLIENT)il ya une erreur avec l'envoie de la requete CONNECT\n");
+  }
+
+  // Exemples à supprimer
+  setPublicite("Promotions sur les concombres !!!");
+  setArticle("pommes", 5.53, 18, "pommes.jpg");
+  ajouteArticleTablePanier("cerises", 8.96, 2);
 }
 
 WindowClient::~WindowClient()
 {
-    delete ui;
+  delete ui;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Fonctions utiles : ne pas modifier /////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::setNom(const char* Text)
+void WindowClient::setNom(const char *Text)
 {
-  if (strlen(Text) == 0 )
+  if (strlen(Text) == 0)
   {
     ui->lineEditNom->clear();
     return;
@@ -86,16 +121,16 @@ void WindowClient::setNom(const char* Text)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-const char* WindowClient::getNom()
+const char *WindowClient::getNom()
 {
-  strcpy(nom,ui->lineEditNom->text().toStdString().c_str());
+  strcpy(nom, ui->lineEditNom->text().toStdString().c_str());
   return nom;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::setMotDePasse(const char* Text)
+void WindowClient::setMotDePasse(const char *Text)
 {
-  if (strlen(Text) == 0 )
+  if (strlen(Text) == 0)
   {
     ui->lineEditMotDePasse->clear();
     return;
@@ -104,16 +139,16 @@ void WindowClient::setMotDePasse(const char* Text)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-const char* WindowClient::getMotDePasse()
+const char *WindowClient::getMotDePasse()
 {
-  strcpy(motDePasse,ui->lineEditMotDePasse->text().toStdString().c_str());
+  strcpy(motDePasse, ui->lineEditMotDePasse->text().toStdString().c_str());
   return motDePasse;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::setPublicite(const char* Text)
+void WindowClient::setPublicite(const char *Text)
 {
-  if (strlen(Text) == 0 )
+  if (strlen(Text) == 0)
   {
     ui->lineEditPublicite->clear();
     return;
@@ -122,12 +157,12 @@ void WindowClient::setPublicite(const char* Text)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::setImage(const char* image)
+void WindowClient::setImage(const char *image)
 {
   // Met à jour l'image
   char cheminComplet[80];
-  sprintf(cheminComplet,"%s%s",REPERTOIRE_IMAGES,image);
-  QLabel* label = new QLabel();
+  sprintf(cheminComplet, "%s%s", REPERTOIRE_IMAGES, image);
+  QLabel *label = new QLabel();
   label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
   label->setScaledContents(true);
   QPixmap *pixmap_img = new QPixmap(cheminComplet);
@@ -139,28 +174,31 @@ void WindowClient::setImage(const char* image)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int WindowClient::isNouveauClientChecked()
 {
-  if (ui->checkBoxNouveauClient->isChecked()) return 1;
+  if (ui->checkBoxNouveauClient->isChecked())
+    return 1;
   return 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::setArticle(const char* intitule,float prix,int stock,const char* image)
+void WindowClient::setArticle(const char *intitule, float prix, int stock, const char *image)
 {
   ui->lineEditArticle->setText(intitule);
   if (prix >= 0.0)
   {
     char Prix[20];
-    sprintf(Prix,"%.2f",prix);
+    sprintf(Prix, "%.2f", prix);
     ui->lineEditPrixUnitaire->setText(Prix);
   }
-  else ui->lineEditPrixUnitaire->clear();
+  else
+    ui->lineEditPrixUnitaire->clear();
   if (stock >= 0)
   {
     char Stock[20];
-    sprintf(Stock,"%d",stock);
+    sprintf(Stock, "%d", stock);
     ui->lineEditStock->setText(Stock);
   }
-  else ui->lineEditStock->clear();
+  else
+    ui->lineEditStock->clear();
   setImage(image);
 }
 
@@ -176,10 +214,11 @@ void WindowClient::setTotal(float total)
   if (total >= 0.0)
   {
     char Total[20];
-    sprintf(Total,"%.2f",total);
+    sprintf(Total, "%.2f", total);
     ui->lineEditTotal->setText(Total);
   }
-  else ui->lineEditTotal->clear();
+  else
+    ui->lineEditTotal->clear();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -221,7 +260,7 @@ void WindowClient::logoutOK()
   setMotDePasse("");
   ui->checkBoxNouveauClient->setCheckState(Qt::CheckState::Unchecked);
 
-  setArticle("",-1.0,-1,"");
+  setArticle("", -1.0, -1, "");
 
   w->videTablePanier();
   totalCaddie = 0.0;
@@ -231,66 +270,67 @@ void WindowClient::logoutOK()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Fonctions utiles Table du panier (ne pas modifier) /////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::ajouteArticleTablePanier(const char* article,float prix,int quantite)
+void WindowClient::ajouteArticleTablePanier(const char *article, float prix, int quantite)
 {
-    char Prix[20],Quantite[20];
+  char Prix[20], Quantite[20];
 
-    sprintf(Prix,"%.2f",prix);
-    sprintf(Quantite,"%d",quantite);
+  sprintf(Prix, "%.2f", prix);
+  sprintf(Quantite, "%d", quantite);
 
-    // Ajout possible
-    int nbLignes = ui->tableWidgetPanier->rowCount();
-    nbLignes++;
-    ui->tableWidgetPanier->setRowCount(nbLignes);
-    ui->tableWidgetPanier->setRowHeight(nbLignes-1,10);
+  // Ajout possible
+  int nbLignes = ui->tableWidgetPanier->rowCount();
+  nbLignes++;
+  ui->tableWidgetPanier->setRowCount(nbLignes);
+  ui->tableWidgetPanier->setRowHeight(nbLignes - 1, 10);
 
-    QTableWidgetItem *item = new QTableWidgetItem;
-    item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
-    item->setTextAlignment(Qt::AlignCenter);
-    item->setText(article);
-    ui->tableWidgetPanier->setItem(nbLignes-1,0,item);
+  QTableWidgetItem *item = new QTableWidgetItem;
+  item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+  item->setTextAlignment(Qt::AlignCenter);
+  item->setText(article);
+  ui->tableWidgetPanier->setItem(nbLignes - 1, 0, item);
 
-    item = new QTableWidgetItem;
-    item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
-    item->setTextAlignment(Qt::AlignCenter);
-    item->setText(Prix);
-    ui->tableWidgetPanier->setItem(nbLignes-1,1,item);
+  item = new QTableWidgetItem;
+  item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+  item->setTextAlignment(Qt::AlignCenter);
+  item->setText(Prix);
+  ui->tableWidgetPanier->setItem(nbLignes - 1, 1, item);
 
-    item = new QTableWidgetItem;
-    item->setFlags(Qt::ItemIsSelectable|Qt::ItemIsEnabled);
-    item->setTextAlignment(Qt::AlignCenter);
-    item->setText(Quantite);
-    ui->tableWidgetPanier->setItem(nbLignes-1,2,item);
+  item = new QTableWidgetItem;
+  item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+  item->setTextAlignment(Qt::AlignCenter);
+  item->setText(Quantite);
+  ui->tableWidgetPanier->setItem(nbLignes - 1, 2, item);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::videTablePanier()
 {
-    ui->tableWidgetPanier->setRowCount(0);
+  ui->tableWidgetPanier->setRowCount(0);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int WindowClient::getIndiceArticleSelectionne()
 {
-    QModelIndexList liste = ui->tableWidgetPanier->selectionModel()->selectedRows();
-    if (liste.size() == 0) return -1;
-    QModelIndex index = liste.at(0);
-    int indice = index.row();
-    return indice;
+  QModelIndexList liste = ui->tableWidgetPanier->selectionModel()->selectedRows();
+  if (liste.size() == 0)
+    return -1;
+  QModelIndex index = liste.at(0);
+  int indice = index.row();
+  return indice;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// Fonctions permettant d'afficher des boites de dialogue (ne pas modifier ////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::dialogueMessage(const char* titre,const char* message)
+void WindowClient::dialogueMessage(const char *titre, const char *message)
 {
-   QMessageBox::information(this,titre,message);
+  QMessageBox::information(this, titre, message);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowClient::dialogueErreur(const char* titre,const char* message)
+void WindowClient::dialogueErreur(const char *titre, const char *message)
 {
-   QMessageBox::critical(this,titre,message);
+  QMessageBox::critical(this, titre, message);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -299,9 +339,22 @@ void WindowClient::dialogueErreur(const char* titre,const char* message)
 void WindowClient::closeEvent(QCloseEvent *event)
 {
   // TO DO (étape 1)
-  // Envoi d'une requete DECONNECT au serveur
-
   // envoi d'un logout si logged
+  if (logged)
+  {
+    requete = buildMyRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
+    if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("(CLIENT)il ya une erreur avec l'envoie de la requete Logout\n");
+    }
+  }
+
+  // Envoi d'une requete DECONNECT au serveur
+  requete = buildMyRequete(3, 1, getpid(), DECONNECT, 0, nullptr, nullptr, nullptr, 0.0);
+  if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
+    perror("(CLIENT)il ya une erreur avec l'envoie de la requete Deconnect\n");
+  }
 
   // Envoi d'une requete de deconnexion au serveur
 
@@ -313,85 +366,95 @@ void WindowClient::closeEvent(QCloseEvent *event)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonLogin_clicked()
 {
-    // Envoi d'une requete de login au serveur
-    // TO DO
+  // Envoi d'une requete de login au serveur
+  // TO DO
+  requete = buildMyRequete(6, 1, getpid(), LOGIN, isNouveauClientChecked(), getNom(), getMotDePasse(), nullptr, 0.0);
+  if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
+    perror("(CLIENT)il ya une erreur avec l'envoie de la requete LOGIN\n");
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonLogout_clicked()
 {
-    // Envoi d'une requete CANCEL_ALL au serveur (au cas où le panier n'est pas vide)
-    // TO DO
+  // Envoi d'une requete CANCEL_ALL au serveur (au cas où le panier n'est pas vide)
+  // TO DO
 
-    // Envoi d'une requete de logout au serveur
-    // TO DO
+  // Envoi d'une requete de logout au serveur
+  // TO DO
+  requete = buildMyRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
+  if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
+    perror("(CLIENT)il ya une erreur avec l'envoie de la requete LOGOUT\n");
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonSuivant_clicked()
 {
-    // TO DO (étape 3)
-    // Envoi d'une requete CONSULT au serveur
+  // TO DO (étape 3)
+  // Envoi d'une requete CONSULT au serveur
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonPrecedent_clicked()
 {
-    // TO DO (étape 3)
-    // Envoi d'une requete CONSULT au serveur
+  // TO DO (étape 3)
+  // Envoi d'une requete CONSULT au serveur
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonAcheter_clicked()
 {
-    // TO DO (étape 5)
-    // Envoi d'une requete ACHAT au serveur
+  // TO DO (étape 5)
+  // Envoi d'une requete ACHAT au serveur
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonSupprimer_clicked()
 {
-    // TO DO (étape 6)
-    // Envoi d'une requete CANCEL au serveur
+  // TO DO (étape 6)
+  // Envoi d'une requete CANCEL au serveur
 
-    // Mise à jour du caddie
-    w->videTablePanier();
-    totalCaddie = 0.0;
-    w->setTotal(-1.0);
+  // Mise à jour du caddie
+  w->videTablePanier();
+  totalCaddie = 0.0;
+  w->setTotal(-1.0);
 
-    // Envoi requete CADDIE au serveur
+  // Envoi requete CADDIE au serveur
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonViderPanier_clicked()
 {
-    // TO DO (étape 6)
-    // Envoi d'une requete CANCEL_ALL au serveur
+  // TO DO (étape 6)
+  // Envoi d'une requete CANCEL_ALL au serveur
 
-    // Mise à jour du caddie
-    w->videTablePanier();
-    totalCaddie = 0.0;
-    w->setTotal(-1.0);
+  // Mise à jour du caddie
+  w->videTablePanier();
+  totalCaddie = 0.0;
+  w->setTotal(-1.0);
 
-    // Envoi requete CADDIE au serveur
+  // Envoi requete CADDIE au serveur
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonPayer_clicked()
 {
-    // TO DO (étape 7)
-    // Envoi d'une requete PAYER au serveur
+  // TO DO (étape 7)
+  // Envoi d'une requete PAYER au serveur
 
-    char tmp[100];
-    sprintf(tmp,"Merci pour votre paiement de %.2f ! Votre commande sera livrée tout prochainement.",totalCaddie);
-    dialogueMessage("Payer...",tmp);
+  char tmp[100];
+  sprintf(tmp, "Merci pour votre paiement de %.2f ! Votre commande sera livrée tout prochainement.", totalCaddie);
+  dialogueMessage("Payer...", tmp);
 
-    // Mise à jour du caddie
-    w->videTablePanier();
-    totalCaddie = 0.0;
-    w->setTotal(-1.0);
+  // Mise à jour du caddie
+  w->videTablePanier();
+  totalCaddie = 0.0;
+  w->setTotal(-1.0);
 
-    // Envoi requete CADDIE au serveur
+  // Envoi requete CADDIE au serveur
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -399,34 +462,88 @@ void WindowClient::on_pushButtonPayer_clicked()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void handlerSIGUSR1(int sig)
 {
-    MESSAGE m;
-  
-    if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),0) != -1)  // !!! a modifier en temps voulu !!!
+  MESSAGE m;
+
+  while (msgrcv(idQ, &m, sizeof(MESSAGE) - sizeof(long), getpid(), IPC_NOWAIT) != -1) // !!! a modifier en temps voulu !!!//(sizeof long ?) c'est pour qu'il prennet pas en compte le lonh => une normalisation
+  {
+    switch (m.requete)
     {
-      switch(m.requete)
+    case LOGIN: // etape 1
+      if (m.data1 == 1)
       {
-        case LOGIN :
-                    break;
-
-        case CONSULT : // TO DO (étape 3)
-                    break;
-
-        case ACHAT : // TO DO (étape 5)
-                    break;
-
-         case CADDIE : // TO DO (étape 5)
-                    break;
-
-         case TIME_OUT : // TO DO (étape 6)
-                    break;
-
-         case BUSY : // TO DO (étape 7)
-                    break;
-
-         default :
-                    break;
+        w->(dialogueMessage(m.data3, m.data4));
+        w->loginOK();
+        logged = true;
       }
-    }
-}
+      else if (m.data1 == 0)
+      {
+        w->dialogueErreur(m.data3, m.data4);
+      }
+      break;
 
+    case CONSULT: // TO DO (étape 3)
+      break;
+
+    case ACHAT: // TO DO (étape 5)
+      break;
+
+    case CADDIE: // TO DO (étape 5)
+      break;
+
+    case TIME_OUT: // TO DO (étape 6)
+      break;
+
+    case BUSY: // TO DO (étape 7)
+      break;
+
+    default:
+      break;
+    }
+  }
+}
+void handlerSIGUSR2(int sig)
+{
+  if (pShm == null)
+  {
+    return;
+  }
+  char publicite[51];
+  strncpy(publicite, pShm, 50);
+  publicite[51] = '\0';
+  w->setPublicite(publicite);
+}
+void copyChaine(char*destination, const char*source){
+  if (strlen(source)<=strlen(destination)){
+    strcpy(destination, source);
+  }else{
+    fprintf(stderr, "la chaine destination est plus grande que la source "); 
+    w->dialogueErreur("Errreur","trop long"); 
+    exit(1);
+  }
+}
+MESSAGE buildMyRequete(int nbrElement, long type, int expediteur, int typeRequete, int d1, const char *d2, const char *d3, const char *d4, float d5){
+   MESSAGE tmp;
+
+    switch (nbElem) 
+    {
+        default:
+        case 8:
+            tmp.data5 = data5;
+        case 7:
+            copieChaine(data4, tmp.data4);
+        case 6:
+            copieChaine(data3, tmp.data3);
+        case 5:
+            copieChaine(data2, tmp.data2);
+        case 4:
+            tmp.data1 = data1;
+        case 3:
+            tmp.type = type;
+            tmp.expediteur = expediteur;
+            tmp.requete = typeRequete;
+            break;
+    }
+
+    return tmp;
+}
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
