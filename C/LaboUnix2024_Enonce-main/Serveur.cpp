@@ -381,7 +381,7 @@ void handlerSIGINT(int sig)
 {
   fprintf(stderr,"\nSuppression de la file de message (%d)\n", idQ);
 
-  kill(tab->pidPublicite, SIGINT);
+  //kill(tab->pidPublicite, SIGINT);
   if (msgctl(idQ,IPC_RMID,NULL) ==-1)
   {
    perror("(SERVEUR)Erreur de msgctl(2), File de message non supprimé\n");

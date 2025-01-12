@@ -54,9 +54,9 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   // Recuperation de l'identifiant de la file de messages // Etape 1
   fprintf(stderr, "(CLIENT %d) Recuperation de l'id de la file de messages\n", getpid());
   // TO DO
-  if ((idQ = msgget(CLE, 0)) = -1)
+  if ((idQ = msgget(CLE, 0)) == -1)
   {
-    perror("(CLIENT %d) Recuperation de l'id de la file de messages (Errreur) \n");
+    perror("(CLIENT ) Recuperation de l'id de la file de messages (Errreur) \n");
   }
 
   // Recuperation de l'identifiant de la mémoire partagée
@@ -65,6 +65,7 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
 
   // Attachement à la mémoire partagée
   // TO DO
+  /*
   if ((idShm = shmget(CLE, 0, 0)) == -1)
   {
     perror("Erreur de shmget");
@@ -76,7 +77,7 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
     perror("Erreur de shmat");
     exit(1);
   }
-  printf("pShm = %s\n", pShm);
+  printf("pShm = %s\n", pShm);*/
   // Armement des signaux
   // TO DO
   struct sigaction A;
