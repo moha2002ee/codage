@@ -28,7 +28,7 @@ et de la reponse *pReponse*/
 void login(MESSAGE* message, MESSAGE* reponse); //fonction login va gerer la demande de LOGIN du client et faire les vérifications
 void envoiRequete(MESSAGE* pReponse); //fonction qui gere l'envoi de toute les requetes
 void envoiSignal(int pid, int typeSignal); //fonction qui gere l'envoi d'un signal a un processus
-void reponseLOGIN(MESSAGE reponse, int typeClient, int typeRequete, const char* rep); //initialise le type de reponse a renvoyer au client pour le LOGIN
+void reponseLOGIN(MESSAGE* pReponse, int typeClient, int typeRequete, const char* rep);//initialise le type de reponse a renvoyer au client pour le LOGIN
 
 int idQ,idShm,idSem;
 int fdPipe[2];

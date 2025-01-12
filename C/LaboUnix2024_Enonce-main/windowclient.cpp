@@ -25,7 +25,7 @@ MESSAGE requete;
 /* fonction */
 void handlerSIGUSR1(int sig);
 void handlerSIGUSR2(int sig);
-MESSAGE buildMyRequete(int nbrElement, long type, int expediteur, int typeRequete, int d1, const char *d2, const char *d3, const char *d4, float d5);
+MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5);
 void copyChaine(char *destinitation, const char *source);
 
 /* define */
@@ -65,7 +65,18 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
 
   // Attachement à la mémoire partagée
   // TO DO
-
+  if ((idShm = shmget(CLE, 0, 0)) == -1)
+  {
+    perror("Erreur de shmget");
+    exit(1);
+  }
+  printf("idShm = %d\n", idShm);
+  if ((pShm = (char *)shmat(idShm, NULL, SHM_RDONLY)) == (char *)-1)
+  {
+    perror("Erreur de shmat");
+    exit(1);
+  }
+  printf("pShm = %s\n", pShm);
   // Armement des signaux
   // TO DO
   struct sigaction A;
@@ -90,7 +101,7 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
 
   // Envoi d'une requete de connexion au serveur
   // TO DO
-  requete = buildMyRequete(3, 1, getpid(), CONNECT, 0, nullptr, nullptr, nullptr, 0.0);
+  requete = constructeurRequete(3, 1, getpid(), CONNECT, 0, nullptr, nullptr, nullptr, 0.0);
   if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
   {
     perror("(CLIENT)il ya une erreur avec l'envoie de la requete CONNECT\n");
@@ -342,7 +353,7 @@ void WindowClient::closeEvent(QCloseEvent *event)
   // envoi d'un logout si logged
   if (logged)
   {
-    requete = buildMyRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
+    requete = constructeurRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
     if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
     {
       perror("(CLIENT)il ya une erreur avec l'envoie de la requete Logout\n");
@@ -350,7 +361,7 @@ void WindowClient::closeEvent(QCloseEvent *event)
   }
 
   // Envoi d'une requete DECONNECT au serveur
-  requete = buildMyRequete(3, 1, getpid(), DECONNECT, 0, nullptr, nullptr, nullptr, 0.0);
+  requete = constructeurRequete(3, 1, getpid(), DECONNECT, 0, nullptr, nullptr, nullptr, 0.0);
   if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
   {
     perror("(CLIENT)il ya une erreur avec l'envoie de la requete Deconnect\n");
@@ -368,10 +379,11 @@ void WindowClient::on_pushButtonLogin_clicked()
 {
   // Envoi d'une requete de login au serveur
   // TO DO
-  requete = buildMyRequete(6, 1, getpid(), LOGIN, isNouveauClientChecked(), getNom(), getMotDePasse(), nullptr, 0.0);
+  requete = constructeurRequete(6, 1, getpid(), LOGIN, isNouveauClientChecked(), getNom(), getMotDePasse(), nullptr, 0.0);
+
   if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
   {
-    perror("(CLIENT)il ya une erreur avec l'envoie de la requete LOGIN\n");
+    perror("(Login)(CLIENT)Erreur lors de l'envoie de la requete LOGIN\n");
   }
 }
 
@@ -383,7 +395,7 @@ void WindowClient::on_pushButtonLogout_clicked()
 
   // Envoi d'une requete de logout au serveur
   // TO DO
-  requete = buildMyRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
+  requete = constructeurRequete(3, 1, getpid(), LOGOUT, 0, nullptr, nullptr, nullptr, 0.0);
   if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
   {
     perror("(CLIENT)il ya une erreur avec l'envoie de la requete LOGOUT\n");
@@ -471,7 +483,7 @@ void handlerSIGUSR1(int sig)
     case LOGIN: // etape 1
       if (m.data1 == 1)
       {
-        w->(dialogueMessage(m.data3, m.data4));
+        w->dialogueMessage(m.data3, m.data4);
         w->loginOK();
         logged = true;
       }
@@ -503,47 +515,67 @@ void handlerSIGUSR1(int sig)
 }
 void handlerSIGUSR2(int sig)
 {
-  if (pShm == null)
+  if (pShm != NULL)
   {
-    return;
+    // Lire le contenu de la mémoire partagée
+    char publicite[51];
+
+    strncpy(publicite, pShm, 50);
+    publicite[51] = '\0';
+
+    w->setPublicite(publicite);
   }
-  char publicite[51];
-  strncpy(publicite, pShm, 50);
-  publicite[51] = '\0';
-  w->setPublicite(publicite);
 }
-void copyChaine(char*destination, const char*source){
-  if (strlen(source)<=strlen(destination)){
-    strcpy(destination, source);
-  }else{
-    fprintf(stderr, "la chaine destination est plus grande que la source "); 
-    w->dialogueErreur("Errreur","trop long"); 
+void copieChaine(const char *aCopier, char *endroitCopie)
+{
+  if (strlen(aCopier) <= sizeof(endroitCopie) - 1)
+  {
+    strcpy(endroitCopie, aCopier);
+  }
+
+  else
+  {
+    fprintf(stderr, "Erreur :dépasse la taille maximale (caractères autorisés).\n");
+    w->dialogueErreur("ERREUR", "TROP LONG");
     exit(1);
   }
 }
-MESSAGE buildMyRequete(int nbrElement, long type, int expediteur, int typeRequete, int d1, const char *d2, const char *d3, const char *d4, float d5){
-   MESSAGE tmp;
+MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5)
+{
+  MESSAGE tmp;
 
-    switch (nbElem) 
-    {
-        default:
-        case 8:
-            tmp.data5 = data5;
-        case 7:
-            copieChaine(data4, tmp.data4);
-        case 6:
-            copieChaine(data3, tmp.data3);
-        case 5:
-            copieChaine(data2, tmp.data2);
-        case 4:
-            tmp.data1 = data1;
-        case 3:
-            tmp.type = type;
-            tmp.expediteur = expediteur;
-            tmp.requete = typeRequete;
-            break;
-    }
+  if (nbElem >= 3)
+  {
+    tmp.type = type;
+    tmp.expediteur = expediteur;
+    tmp.requete = typeRequete;
+  }
 
-    return tmp;
+  if (nbElem >= 4)
+  {
+    tmp.data1 = data1;
+  }
+
+  if (nbElem >= 5)
+  {
+    copieChaine(data2, tmp.data2);
+  }
+
+  if (nbElem >= 6)
+  {
+    copieChaine(data3, tmp.data3);
+  }
+
+  if (nbElem >= 7)
+  {
+    copieChaine(data4, tmp.data4);
+  }
+
+  if (nbElem >= 8)
+  {
+    tmp.data5 = data5;
+  }
+
+  return tmp;
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
