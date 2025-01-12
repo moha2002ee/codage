@@ -1,3 +1,0 @@
-/home/student/C/CPP/Etape12/build/CMakeFiles/rebuild_cache.dir
-/home/student/C/CPP/Etape12/build/CMakeFiles/ApplicHoraire.dir
-/home/student/C/CPP/Etape12/build/CMakeFiles/edit_cache.dir

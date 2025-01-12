@@ -45,4 +45,4 @@ XmlFileSerializerException.o: XmlFileSerializerException.cpp XmlFileSerializerEx
 
 # Nettoyage des fichiers objets et de l'exécutable
 clean:
-	rm -f *.o $(TARGET)
+	rm -f *.o *.xml $(TARGET)
