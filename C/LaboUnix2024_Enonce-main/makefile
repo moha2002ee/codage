@@ -35,7 +35,7 @@ Client: mainclient.o windowclient.o moc_windowclient.o
 	@g++ -Wno-unused-parameter -o Client mainclient.o windowclient.o moc_windowclient.o /usr/lib64/libQt5Widgets.so /usr/lib64/libQt5Gui.so /usr/lib64/libQt5Core.so /usr/lib64/libGL.so -lpthread
 FichierClient.o: FichierClient.cpp FichierClient.h
 	@echo "Compilation de fichier client..."
-	g++ -c FichierClient.cpp
+	@g++ -c FichierClient.cpp
 
 
 
