@@ -65,11 +65,11 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   // Attachement à la mémoire partagée
   // TO DO
 
-  if ((idShm = shmget(CLE, 0, 0)) == -1)
-  {
-    perror("Erreur de shmget");
+if ((idShm = shmget(CLE, 1024, IPC_CREAT | 0666)) == -1) {
+    perror("Erreur lors de la création ou récupération de la mémoire partagée");
     exit(1);
-  }
+}
+
   printf("idShm = %d\n", idShm);
   if ((pShm = (char *)shmat(idShm, NULL, SHM_RDONLY)) == (char *)-1)
   {
