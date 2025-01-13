@@ -60,7 +60,7 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   }
 
   // Recuperation de l'identifiant de la mémoire partagée
-  printf(stderr, "(CLIENT %d) Recuperation de l'id de la mémoire partagée\n", getpid());
+  fprintf(stderr, "(CLIENT %d) Recuperation de l'id de la mémoire partagée\n", getpid());
   // TO DO
 
   // Attachement à la mémoire partagée
