@@ -65,7 +65,7 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
 
   // Attachement à la mémoire partagée
   // TO DO
-  /*
+  
   if ((idShm = shmget(CLE, 0, 0)) == -1)
   {
     perror("Erreur de shmget");
@@ -77,7 +77,8 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
     perror("Erreur de shmat");
     exit(1);
   }
-  printf("pShm = %s\n", pShm);*/
+  printf("pShm = %s\n", pShm);
+  setPublicite(pShm);
   // Armement des signaux
   // TO DO
   struct sigaction A;
