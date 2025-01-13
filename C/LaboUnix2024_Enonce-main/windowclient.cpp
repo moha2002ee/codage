@@ -65,18 +65,19 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   // Attachement à la mémoire partagée
   // TO DO
 
-if ((idShm = shmget(CLE, 1024, IPC_CREAT | 0666)) == -1) {
-    perror("Erreur lors de la création ou récupération de la mémoire partagée");
-    exit(1);
-}
+    if((idShm = shmget(CLE,0,0)) == -1)
+    {
+      perror("Erreur de shmget");
+      exit(1);
+    }
+    printf("idShm = %d\n",idShm);
+    if ((pShm = (char*)shmat(idShm,NULL,SHM_RDONLY)) == (char*)-1)
+    {
+      perror("Erreur de shmat");
+      exit(1);
+    }
+    printf("pShm = %s\n",pShm);
 
-  printf("idShm = %d\n", idShm);
-  if ((pShm = (char *)shmat(idShm, NULL, SHM_RDONLY)) == (char *)-1)
-  {
-    perror("Erreur de shmat");
-    exit(1);
-  }
-  printf("pShm = %s\n", pShm);
   // Armement des signaux
   // TO DO
   struct sigaction A;
@@ -106,11 +107,12 @@ if ((idShm = shmget(CLE, 1024, IPC_CREAT | 0666)) == -1) {
   {
     perror("(CLIENT)il ya une erreur avec l'envoie de la requete CONNECT\n");
   }
-
+  /*
   // Exemples à supprimer
-  setPublicite("Promotions sur les concombres !!!");
+  setPublicite("Promotions sur les concombres !!!                                  ");
   setArticle("pommes", 5.53, 18, "pommes.jpg");
   ajouteArticleTablePanier("cerises", 8.96, 2);
+*/
 }
 
 WindowClient::~WindowClient()
@@ -517,7 +519,6 @@ void handlerSIGUSR2(int sig)
 {
   if (pShm != NULL)
   {
-    // Lire le contenu de la mémoire partagée
     char publicite[51];
 
     strncpy(publicite, pShm, 50);
