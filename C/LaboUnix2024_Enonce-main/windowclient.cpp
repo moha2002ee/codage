@@ -26,7 +26,7 @@ MESSAGE requete;
 void handlerSIGUSR1(int sig);
 void handlerSIGUSR2(int sig);
 MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5);
-void copyChaine(char *destinitation, const char *source);
+
 
 /* define */
 #define REPERTOIRE_IMAGES "images/"
@@ -60,12 +60,12 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   }
 
   // Recuperation de l'identifiant de la mémoire partagée
-  //fprintf(stderr,"(CLIENT %d) Recuperation de l'id de la mémoire partagée\n",getpid());
+  printf(stderr, "(CLIENT %d) Recuperation de l'id de la mémoire partagée\n", getpid());
   // TO DO
 
   // Attachement à la mémoire partagée
   // TO DO
-  
+
   if ((idShm = shmget(CLE, 0, 0)) == -1)
   {
     perror("Erreur de shmget");
