@@ -14,9 +14,11 @@
 #include "FichierClient.h" // contient les fonctions pour le fichier client
 #include "protocole.h"     // contient la cle et la structure d'un message
 
+/*Handler de signaux*/
 void handlerSIGINT(int sig);
-void copieChaine(const char *aCopier, char *endroitCopie); // Va permettre de copier les chaines envoyer dans la fonction constructeurRequete et controle les tailles
 
+/*Fonction faite maison********************************************************************************************************************************************/
+void copieChaine(const char *aCopier, char *endroitCopie); // Va permettre de copier les chaines envoyer dans la fonction constructeurRequete et controle les tailles
 MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5);
 /*Permet de construire une requete en envoyent d'abord le Nombre d'élements que contiendra la requete suivie des champs correspondant dans la structure
 !!! ATTENTION Les champs non utulisées doivent etre a NULL ou nullptr (pour les char*)*/
@@ -25,10 +27,15 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse);
 /*On utulisera ici une fonction qui traitera les requete afin de ne pas faire de boucle dans chaque CASE de la fonction main on passera donc l'adresse du message *pM
 et de la reponse *pReponse*/
 
+pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const char* arg2, const char* arg3);
+/*Fonction qui va permettre de créer un procéssus fils et va le recouvrir (execl) prend en parametre le nombre d'argument qui seront passer a argv*/
+
 void login(MESSAGE *message, MESSAGE *reponse);                                         // fonction login va gerer la demande de LOGIN du client et faire les vérifications
 void envoiRequete(MESSAGE *pReponse);                                                   // fonction qui gere l'envoi de toute les requetes
 void envoiSignal(int pid, int typeSignal);                                              // fonction qui gere l'envoi d'un signal a un processus
 void reponseLOGIN(MESSAGE *pReponse, int typeClient, int typeRequete, const char *rep); // initialise le type de reponse a renvoyer au client pour le LOGIN
+/*****************************************************************************************************************************************************************/
+
 
 int idQ, idShm, idSem;
 int fdPipe[2];
@@ -48,6 +55,13 @@ int main()
   sigaction(SIGINT, &A, NULL);
 
   // Creation des ressources
+  fprintf(stderr, "(SERVEUR) création de la mémoire partagée\n");
+  if ((idShm = shmget(CLE, 52, IPC_CREAT | IPC_EXCL | 0777)) ==-1)
+  {
+  perror("(SERVEUR)Erreur de création de la mémoire partagée\n");
+  exit(1);
+  }
+
   // Creation de la file de message
   fprintf(stderr, "(SERVEUR %d) Creation de la file de messages\n", getpid());
   if ((idQ = msgget(CLE, IPC_CREAT | IPC_EXCL | 0600)) == -1) // CLE definie dans protocole.h
@@ -76,7 +90,8 @@ int main()
   afficheTab();
 
   // Creation du processus Publicite (étape 2)
-  // TO DO
+  pid_t pPub = creerProcessusFils(1,"./Publicite", "Publicite",NULL,NULL);
+  tab->pidPublicite = pPub;
 
   // Creation du processus AccesBD (étape 4)
   // TO DO
@@ -128,8 +143,8 @@ int main()
       break;
 
     case UPDATE_PUB: // TO DO
-                          fprintf(stderr,"(SERVEUR %d) Requete UPDATE_PUB Recue de %d\n", getpid(),m.expediteur);
-
+      fprintf(stderr,"(SERVEUR %d) Requete UPDATE_PUB Recue de %d\n", getpid(),m.expediteur);
+      
       utilisationTableConnexions(&m, &reponse);
       break;
 
@@ -229,10 +244,10 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
       break;
 
     case UPDATE_PUB: // TO DO
-      if (tab->connexions[i].pidFenetre > 0)
-      {
-        kill(tab->connexions[i].pidFenetre, SIGUSR2);
-      }
+                    if(tab->connexions[i].pidFenetre > 0)
+                    {
+                      kill(tab->connexions[i].pidFenetre, SIGUSR2);
+                    }
 
       break;
 
@@ -378,6 +393,44 @@ MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeReque
   return tmp;
 }
 
+pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const char* arg2, const char* arg3)
+{
+  pid_t pTemp;
+  pTemp = fork();
+  
+  if(pTemp == 0)
+  {
+    if (nbArg == 1)
+    {
+      if (execl(arg0,arg1,NULL) == -1)
+      {
+        perror("Erreur de execl()");
+        exit(1);
+      }
+    }
+
+    if (nbArg == 2)
+    {
+      if (execl(arg0,arg1,arg2,NULL) == -1)
+      {
+        perror("Erreur de execl()");
+        exit(1);
+      }
+    }
+
+    if (nbArg == 3)
+    {
+      if (execl(arg0,arg1,arg2,arg3,NULL) == -1)
+      {
+        perror("Erreur de execl()");
+        exit(1);
+      }
+    }
+  }
+
+  return pTemp;
+}
+
 void handlerSIGINT(int sig)
 {
   fprintf(stderr, "\nSuppression de la file de message (%d)\n", idQ);
@@ -398,7 +451,7 @@ void handlerSIGINT(int sig)
     perror("(SERVEUR)Erreur de suppresion de la mémoire partagée\n");
     exit(1);
   }
-
+  /*
   // Fermeture du pipe
   if (close(fdPipe[0]) ==-1)
   {
@@ -411,5 +464,5 @@ void handlerSIGINT(int sig)
     perror("Erreur fermeture entree du pipe");
     exit(1);
   }
-  
+  */
 }
