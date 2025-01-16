@@ -85,7 +85,7 @@ bool Timetable::isClassroomAvailable(int id, const Timing &timing)
      return true;
 }
 
-int Timetable::addProfessor(const string &lastName, const string &firstName)
+int Timetable::addProfessor(const string &lastName, const string &firstName) 
 {
      cout << "---Professor: constructeur d'initialisation" << endl;
 
@@ -302,7 +302,7 @@ void Timetable::deleteCourseById(int code)
 
 Timetable &Timetable::getInstance()
 {
-     return instance;
+     return instance; // un seul objet
 }
 
 set<Classroom> Timetable::getClassrooms() const
@@ -338,9 +338,9 @@ void Timetable::save(const string &timetableName)
           std::cerr << "Erreur d'ouverture du fichier...\n";
           return;
      }
-     fichier.write((char *)&id, sizeof(int));
+     fichier.write((char *)&id, sizeof(int));// pour permettre d'ecirire les int en char brut 
      fichier.write((char *)&code, sizeof(int));
-     fichier.flush();
+     fichier.flush(); // forcer l'ecriture 
      fichier.close();
 
      cout << "currentId : " << id << endl;
