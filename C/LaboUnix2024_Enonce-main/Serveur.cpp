@@ -40,6 +40,7 @@ int idQ, idShm, idSem;
 int fdPipe[2];
 TAB_CONNEXIONS *tab;
 char buffer[20];
+pid_t AccesBD;
 
 void afficheTab();
 
@@ -74,6 +75,11 @@ int main()
 
   // Creation du pipe
   // TO DO
+  if(pipe(fdPipe)==-1){
+    perror("(serveur) il ya un probleme lors de la creation de la pipe");
+    exit(1);
+  }
+
 
   // Initialisation du tableau de connexions
   tab = (TAB_CONNEXIONS *)malloc(sizeof(TAB_CONNEXIONS));
@@ -95,6 +101,8 @@ int main()
 
   // Creation du processus AccesBD (étape 4)
   // TO DO
+  AccesBD= creerProcessusFils(2,"./AccesBD","AccesBD",buffer,NULL);
+  tab->pidAccesBD = AccesBD;
 
   MESSAGE m;
   MESSAGE reponse;
@@ -104,6 +112,10 @@ int main()
     fprintf(stderr, "(SERVEUR %d) Attente d'une requete...\n", getpid());
     if (msgrcv(idQ, &m, sizeof(MESSAGE) - sizeof(long), 1, 0) == -1)
     {
+      if (errno == EINTR)
+      {
+        continue;
+      }
       perror("(SERVEUR) Erreur de msgrcv");
       msgctl(idQ, IPC_RMID, NULL);
       exit(1);
@@ -151,6 +163,8 @@ int main()
 
     case CONSULT: // TO DO
       fprintf(stderr, "(SERVEUR %d) Requete CONSULT reçue de %d\n", getpid(), m.expediteur);
+      utilisationTableConnexions(&m, &reponse);
+      envoiRequete(&reponse);
       break;
 
     case ACHAT: // TO DO
@@ -229,8 +243,6 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
           tab->connexions[i].pidCaddie = creerProcessusFils(2, "./Caddie", "Caddie", buffer, NULL);
           pReponse->type = tab->connexions[i].pidCaddie;
           envoiRequete(pReponse);
-
-          envoiRequete(pReponse);
         }
 
         pReponse->type = pM->expediteur;
@@ -260,6 +272,15 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
       break;
 
     case CONSULT: // TO DO
+      if (tab->connexions[i].pidFenetre == pM->expediteur)
+      {
+        pReponse->requete = CONSULT;
+        pReponse->type = tab->connexions[i].pidCaddie;
+        pReponse->data1 = pM->data1;
+        pReponse->expediteur = pM->expediteur;
+        strcpy(pReponse->data2, pM->data2);
+        i = 10;
+      }
       break;
 
     case ACHAT: // TO DO
@@ -465,18 +486,17 @@ void handlerSIGINT(int sig)
     perror("(SERVEUR)Erreur de suppresion de la mémoire partagée\n");
     exit(1);
   }
-  /*
+
   // Fermeture du pipe
-  if (close(fdPipe[0]) ==-1)
+  if (close(fdPipe[0]) == -1)
   {
     perror("Erreur fermeture sortie du pipe");
     exit(1);
   }
 
-  if (close(fdPipe[1]) ==-1)
+  if (close(fdPipe[1]) == -1)
   {
     perror("Erreur fermeture entree du pipe");
     exit(1);
   }
-  */
 }

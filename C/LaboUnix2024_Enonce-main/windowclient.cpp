@@ -402,6 +402,7 @@ void WindowClient::on_pushButtonLogout_clicked()
   {
     perror("(CLIENT)il ya une erreur avec l'envoie de la requete LOGOUT\n");
   }
+  logoutOK();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -409,7 +410,7 @@ void WindowClient::on_pushButtonSuivant_clicked()
 {
   // TO DO (étape 3)
   // Envoi d'une requete CONSULT au serveur
-  indexeMesArticles(articleEnCours.id++);
+  indexeMesArticles(articleEnCours.id + 1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -417,7 +418,7 @@ void WindowClient::on_pushButtonPrecedent_clicked()
 {
   // TO DO (étape 3)
   // Envoi d'une requete CONSULT au serveur
-  indexeMesArticles(articleEnCours.id--);
+  indexeMesArticles(articleEnCours.id - 1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -596,13 +597,14 @@ void mettreAjourLesArticle(MESSAGE *m)
 }
 void indexeMesArticles(int id)
 {
-  if (id < 21 || 0 > id)
+  if (id > 21 || 1 > id)
   {
     w->dialogueErreur("ERREUR", "tu depasse la plage");
     return;
   }
-  requete = constructeurRequete(4,1,getpid(),CONSULT,id,nullptr,nullptr,nullptr,0.0);
-  if(msgsnd(idQ, &requete, sizeof(MESSAGE)-sizeof(long),0)==-1){
+  requete = constructeurRequete(4, 1, getpid(), CONSULT, id, nullptr, nullptr, nullptr, 0.0);
+  if (msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
     perror("(indexeMesArticles)(client) il ya une erreur du mgsnd ");
   }
 }

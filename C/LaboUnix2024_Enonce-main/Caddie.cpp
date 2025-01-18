@@ -1,173 +1,163 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <signal.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <signal.h>
-#include <mysql.h>
-#include "protocole.h" // contient la cle et la structure d'un message
+#include <stdio.h>      // Bibliothèque standard pour les entrées/sorties
+#include <stdlib.h>     // Bibliothèque standard pour des fonctions utilitaires (ex: exit)
+#include <sys/types.h>  // Définitions des types de données pour IPC et autres
+#include <sys/ipc.h>    // Interface pour les clés IPC
+#include <sys/msg.h>    // Interface pour les files de messages
+#include <sys/shm.h>    // Interface pour la mémoire partagée
+#include <signal.h>     // Gestion des signaux
+#include <string.h>     // Fonctions pour manipuler des chaînes de caractères
+#include <sys/stat.h>   // Manipulation des permissions des fichiers
+#include <fcntl.h>      // Contrôle des fichiers
+#include <unistd.h>     // Fonctionnalités UNIX standard (ex: close, write)
+#include <mysql.h>      // Interface pour interagir avec une base de données MySQL
+#include "protocole.h"  // Fichier spécifique définissant les clés et structures pour le projet
 
-int idQ;
+int idQ;                // Identifiant de la file de messages
+ARTICLE articles[10];   // Tableau pour stocker les articles
+int nbArticles = 0;     // Nombre d'articles dans le panier
 
-ARTICLE articles[10];
-int nbArticles = 0;
+int fdWpipe;            // Descripteur pour le pipe d'écriture
+int pidClient;          // PID du client associé
 
-int fdWpipe;
-int pidClient;
+MYSQL* connexion;       // Pointeur pour gérer la connexion MySQL
 
-MYSQL *connexion;
+void handlerSIGALRM(int sig); // Prototype pour le gestionnaire de signal SIGALRM
 
-void handlerSIGALRM(int sig);
-void envoyerMessagePipe(MESSAGE *m);
-void envoyerArticleAuClient(MESSAGE *m);
-
-int main(int argc, char *argv[])
+int main(int argc,char* argv[]) 
 {
-  // Masquage de SIGINT
-  sigset_t mask;
-  sigaddset(&mask, SIGINT);
-  sigprocmask(SIG_SETMASK, &mask, NULL);
+    // Masquage du signal SIGINT pour le programme
+    sigset_t mask;      
+    sigaddset(&mask,SIGINT);
+    sigprocmask(SIG_SETMASK,&mask,NULL);
 
-  // Armement des signaux
-  // TO DO
+    // Préparer l'armement des signaux (pas encore implémenté)
+    // TO DO
 
-  // Recuperation de l'identifiant de la file de messages
-  fprintf(stderr, "(CADDIE %d) Recuperation de l'id de la file de messages\n", getpid());
-  if ((idQ = msgget(CLE, 0)) == -1)
-  {
-    perror("(CADDIE) Erreur de msgget");
-    exit(1);
-  }
+    // Récupération de l'identifiant de la file de messages
+    fprintf(stderr,"(CADDIE %d) Recuperation de l'id de la file de messages\n", getpid());
 
-  // Connexion à la base de donnée
-  connexion = mysql_init(NULL);
-  if (mysql_real_connect(connexion, "localhost", "Student", "PassStudent1_", "PourStudent", 0, 0, 0) == NULL)
-  {
-    fprintf(stderr, "(SERVEUR) Erreur de connexion à la base de données...\n");
-    exit(1);
-  }
-
-  MESSAGE m;
-  MESSAGE reponse;
-
-  char requete[200];
-  char newUser[20];
-  MYSQL_RES *resultat;
-  MYSQL_ROW Tuple;
-
-  // Récupération descripteur écriture du pipe
-  fdWpipe = atoi(argv[1]);
-
-  while (1)
-  {
-    if (msgrcv(idQ, &m, sizeof(MESSAGE) - sizeof(long), getpid(), 0) == -1)
+    if ((idQ = msgget(CLE,0)) == -1) // Si la récupération échoue
     {
-      perror("(CADDIE) Erreur de msgrcv");
-      exit(1);
+        perror("(CADDIE) Erreur de msgget"); // Affiche un message d'erreur
+        exit(1); // Termine le programme avec un code d'erreur
     }
 
-    switch (m.requete)
+    // Connexion à la base de données MySQL
+    connexion = mysql_init(NULL); // Initialise le gestionnaire MySQL
+    if (mysql_real_connect(connexion,"localhost","Student","PassStudent1_","PourStudent",0,0,0) == NULL)
     {
-    case LOGIN: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete LOGIN reçue de %d\n", getpid(), m.expediteur);
-      pidClient = m.expediteur;
-      break;
-
-    case LOGOUT: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete LOGOUT reçue de %d\n", getpid(), m.expediteur);
-      exit(1);
-      break;
-
-    case CONSULT: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete CONSULT reçue de %d\n", getpid(), m.expediteur);
-      envoyerMessagePipe(&m);
-      envoyerArticleAuClient(&m);
-
-      break;
-
-    case ACHAT: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete ACHAT reçue de %d\n", getpid(), m.expediteur);
-
-      // on transfert la requete à AccesBD
-
-      // on attend la réponse venant de AccesBD
-
-      // Envoi de la reponse au client
-
-      break;
-
-    case CADDIE: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete CADDIE reçue de %d\n", getpid(), m.expediteur);
-      break;
-
-    case CANCEL: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete CANCEL reçue de %d\n", getpid(), m.expediteur);
-
-      // on transmet la requete à AccesBD
-
-      // Suppression de l'aricle du panier
-      break;
-
-    case CANCEL_ALL: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete CANCEL_ALL reçue de %d\n", getpid(), m.expediteur);
-
-      // On envoie a AccesBD autant de requeres CANCEL qu'il y a d'articles dans le panier
-
-      // On vide le panier
-      break;
-
-    case PAYER: // TO DO
-      fprintf(stderr, "(CADDIE %d) Requete PAYER reçue de %d\n", getpid(), m.expediteur);
-
-      // On vide le panier
-      break;
+        fprintf(stderr,"(SERVEUR) Erreur de connexion à la base de données...\n");
+        exit(1); // Quitte si la connexion échoue
     }
-  }
-}
 
-void handlerSIGALRM(int sig)
-{
-  fprintf(stderr, "(CADDIE %d) Time Out !!!\n", getpid());
+    MESSAGE m;             // Variable pour recevoir des messages
+    MESSAGE reponse;       // Variable pour envoyer des réponses
 
-  // Annulation du caddie et mise à jour de la BD
-  // On envoie a AccesBD autant de requetes CANCEL qu'il y a d'articles dans le panier
+    char requete[200];     // Buffer pour les requêtes SQL
+    char newUser[20];      // Buffer pour le nom d'un utilisateur
+    MYSQL_RES* resultat;   // Résultat de requêtes MySQL
+    MYSQL_ROW Tuple;       // Ligne d'un résultat MySQL
+    int fdWpipe;
 
-  // Envoi d'un Time Out au client (s'il existe toujours)
+    fdWpipe = atoi(argv[1]);
 
-  exit(0);
-}
-void envoyerMessagePipe(MESSAGE *m)
-{
-  m->expediteur = getpid();
-  if (fdWpipe, m, sizeof(MESSAGE) != sizeof(MESSAGE))
-  {
-    perror("(caddie) il y a une erreur de l'envoie de la requete via la  pipe ");
-    exit(1);
-  }
-  if (msgrcv(idQ, m, sizeof(MESSAGE) - sizeof(MESSAGE), getpid(), 0))
-  {
-    perror("(Caddie) il y a une erreur de mscrcv");
-    exit(1);
-  }
-}
-void envoyerArticleAuClient(MESSAGE *m)
-{
-  if (m->data1 != 1)
-  { // si'l'article est valide ?
-    m->type = pidClient;
-    m->expediteur = getpid();
-    if (msgsnd(idQ, m, sizeof(MESSAGE) - sizeof(MESSAGE), 0) == -1)
+    while(1) // Boucle principale pour traiter les requêtes
     {
-      perror("(Caddie) il y a erreru avec le msgsnd");
-      exit(1);
+        fprintf(stderr,"(CADDIE %d) attente de requete\n",getpid());
+
+        // Réception d'un message depuis la file de messages
+        if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),0) == -1)
+        {
+            perror("(CADDIE) Erreur de msgrcv");
+            exit(1);
+        }
+
+        // Gestion des requêtes reçues
+        switch(m.requete)
+        {
+            case LOGIN: // Requête pour se connecter
+                fprintf(stderr,"(CADDIE %d) Requete LOGIN reçue de %d\n",getpid(),m.expediteur);
+                pidClient = m.expediteur;
+                break;
+
+            case LOGOUT: // Requête pour se déconnecter
+                fprintf(stderr,"(CADDIE %d) Requete LOGOUT reçue de %d\n",getpid(),m.expediteur);
+                mysql_close(connexion); // Fermeture de la connexion MySQL
+                exit(5); // Quitte le programme
+                break;
+
+            case CONSULT: // Requête pour consulter des données
+                fprintf(stderr,"(CADDIE %d) Requete CONSULT reçue de %d\n",getpid(),m.expediteur);
+
+                // Construction et exécution d'une requête SQL
+                char table[11];
+                strcpy(table, "UNIX_FINAL");
+                sprintf(requete,"select * from %s where id = %d;", table, m.data1);
+
+                if (mysql_query(connexion,requete) != 0) // Si l'exécution échoue
+                {
+                    fprintf(stderr, "Erreur de mysql_query: %s\n",mysql_error(connexion));
+                    exit(1);
+                }
+
+                printf("Requete SELECT réussie.\n");
+
+                // Récupération des résultats de la requête
+                if ((resultat = mysql_store_result(connexion)) == NULL)
+                {
+                    fprintf(stderr, "Erreur de mysql_store_result: %s\n",mysql_error(connexion));
+                    exit(1);
+                }
+
+                if((Tuple = mysql_fetch_row(resultat)) != NULL) // Si une ligne est trouvée
+                {
+                    // Remplit le message de réponse avec les données trouvées
+                    reponse.type = m.expediteur;
+                    reponse.expediteur = getpid();
+                    reponse.requete = CONSULT;
+                    reponse.data1 = atoi(Tuple[0]);
+                    strcpy(reponse.data2, Tuple[1]);
+                    strcpy(reponse.data3, Tuple[3]);
+                    strcpy(reponse.data4, Tuple[4]);
+                    reponse.data5 = atof(Tuple[2]);
+
+                    // Envoie le message de réponse
+                    if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                    {
+                        perror("Erreur de msgsnd");
+                        exit(1);
+                    }
+
+                    kill(reponse.type, SIGUSR1); // Envoie un signal au client
+                }
+
+                break;
+
+            case ACHAT: // Requête pour acheter un article
+                fprintf(stderr,"(CADDIE %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
+                break;
+
+            case CADDIE: // Requête pour afficher le caddie
+                fprintf(stderr,"(CADDIE %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
+                break;
+
+            case CANCEL: // Requête pour annuler un article
+                fprintf(stderr,"(CADDIE %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
+                break;
+
+            case CANCEL_ALL: // Requête pour annuler tous les articles
+                fprintf(stderr,"(CADDIE %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
+                break;
+
+            case PAYER: // Requête pour payer le caddie
+                fprintf(stderr,"(CADDIE %d) Requete PAYER reçue de %d\n",getpid(),m.expediteur);
+                break;
+        }
     }
-    kill(pidClient, SIGUSR1);
-  }
+}
+
+void handlerSIGALRM(int sig) // Gestionnaire pour le signal SIGALRM
+{
+    fprintf(stderr,"(CADDIE %d) Time Out !!!\n",getpid());
+    exit(0); // Termine le programme
 }
