@@ -25,6 +25,8 @@ MESSAGE requete;
 /* fonction */
 void handlerSIGUSR1(int sig);
 void handlerSIGUSR2(int sig);
+void mettreAjourLesArticle(MESSAGE *m);
+void indexeMesArticles(int id);
 MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5);
 
 /* define */
@@ -61,20 +63,20 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
   // Recuperation de l'identifiant de la mémoire partagée
   // fprintf(stderr, "(CLIENT %d) Recuperation de l'id de la mémoire partagée\n", getpid());
   // TO DO
-    if((idShm = shmget(CLE,0,0)) == -1)
-    {
-      perror("Erreur de shmget");
-      exit(1);
-    }
-    printf("idShm = %d\n",idShm);
+  if ((idShm = shmget(CLE, 0, 0)) == -1)
+  {
+    perror("Erreur de shmget");
+    exit(1);
+  }
+  printf("idShm = %d\n", idShm);
   // Attachement à la mémoire partagée
   // TO DO
-    if ((pShm = (char*)shmat(idShm,NULL,SHM_RDONLY)) == (char*)-1)
-    {
-      perror("Erreur de shmat");
-      exit(1);
-    }
-    printf("pShm = %s\n",pShm);
+  if ((pShm = (char *)shmat(idShm, NULL, SHM_RDONLY)) == (char *)-1)
+  {
+    perror("Erreur de shmat");
+    exit(1);
+  }
+  printf("pShm = %s\n", pShm);
 
   // Armement des signaux
   // TO DO
@@ -407,6 +409,7 @@ void WindowClient::on_pushButtonSuivant_clicked()
 {
   // TO DO (étape 3)
   // Envoi d'une requete CONSULT au serveur
+  indexeMesArticles(articleEnCours.id++);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -414,6 +417,7 @@ void WindowClient::on_pushButtonPrecedent_clicked()
 {
   // TO DO (étape 3)
   // Envoi d'une requete CONSULT au serveur
+  indexeMesArticles(articleEnCours.id--);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -494,6 +498,7 @@ void handlerSIGUSR1(int sig)
       break;
 
     case CONSULT: // TO DO (étape 3)
+      mettreAjourLesArticle(&m);
       break;
 
     case ACHAT: // TO DO (étape 5)
@@ -576,5 +581,29 @@ MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeReque
   }
 
   return tmp;
+}
+void mettreAjourLesArticle(MESSAGE *m)
+{
+  articleEnCours.id = m->data1;
+  strcpy(articleEnCours.intitule, m->data2);
+  articleEnCours.prix = m->data5;
+  articleEnCours.stock = atoi(m->data3);
+  strcpy(articleEnCours.image, m->data4);
+
+  printf("%s, %f, %d, %s\n", articleEnCours.intitule, articleEnCours.prix, articleEnCours.stock, articleEnCours.image);
+
+  w->setArticle(articleEnCours.intitule, articleEnCours.prix, articleEnCours.stock, articleEnCours.image);
+}
+void indexeMesArticles(int id)
+{
+  if (id < 21 || 0 > id)
+  {
+    w->dialogueErreur("ERREUR", "tu depasse la plage");
+    return;
+  }
+  requete = constructeurRequete(4,1,getpid(),CONSULT,id,nullptr,nullptr,nullptr,0.0);
+  if(msgsnd(idQ, &requete, sizeof(MESSAGE)-sizeof(long),0)==-1){
+    perror("(indexeMesArticles)(client) il ya une erreur du mgsnd ");
+  }
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////

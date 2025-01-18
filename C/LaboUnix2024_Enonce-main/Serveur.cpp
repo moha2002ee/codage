@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include "FichierClient.h" // contient les fonctions pour le fichier client
 #include "protocole.h"     // contient la cle et la structure d'un message
-
+#include <cerrno>
 /*Handler de signaux*/
 void handlerSIGINT(int sig);
 
@@ -27,7 +27,7 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse);
 /*On utulisera ici une fonction qui traitera les requete afin de ne pas faire de boucle dans chaque CASE de la fonction main on passera donc l'adresse du message *pM
 et de la reponse *pReponse*/
 
-pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const char* arg2, const char* arg3);
+pid_t creerProcessusFils(int nbArg, const char *arg0, const char *arg1, const char *arg2, const char *arg3);
 /*Fonction qui va permettre de créer un procéssus fils et va le recouvrir (execl) prend en parametre le nombre d'argument qui seront passer a argv*/
 
 void login(MESSAGE *message, MESSAGE *reponse);                                         // fonction login va gerer la demande de LOGIN du client et faire les vérifications
@@ -36,10 +36,10 @@ void envoiSignal(int pid, int typeSignal);                                      
 void reponseLOGIN(MESSAGE *pReponse, int typeClient, int typeRequete, const char *rep); // initialise le type de reponse a renvoyer au client pour le LOGIN
 /*****************************************************************************************************************************************************************/
 
-
 int idQ, idShm, idSem;
 int fdPipe[2];
 TAB_CONNEXIONS *tab;
+char buffer[20];
 
 void afficheTab();
 
@@ -56,10 +56,10 @@ int main()
 
   // Creation des ressources
   fprintf(stderr, "(SERVEUR) création de la mémoire partagée\n");
-  if ((idShm = shmget(CLE, 52, IPC_CREAT | IPC_EXCL | 0777)) ==-1)
+  if ((idShm = shmget(CLE, 52, IPC_CREAT | IPC_EXCL | 0777)) == -1)
   {
-  perror("(SERVEUR)Erreur de création de la mémoire partagée\n");
-  exit(1);
+    perror("(SERVEUR)Erreur de création de la mémoire partagée\n");
+    exit(1);
   }
 
   // Creation de la file de message
@@ -90,7 +90,7 @@ int main()
   afficheTab();
 
   // Creation du processus Publicite (étape 2)
-  pid_t pPub = creerProcessusFils(1,"./Publicite", "Publicite",NULL,NULL);
+  pid_t pPub = creerProcessusFils(1, "./Publicite", "Publicite", NULL, NULL);
   tab->pidPublicite = pPub;
 
   // Creation du processus AccesBD (étape 4)
@@ -134,6 +134,7 @@ int main()
 
       // envoi du signal SIGUSR1 pour faire afficher le message dans data4
       envoiSignal(reponse.type, SIGUSR1);
+
       break;
 
     case LOGOUT: // TO DO
@@ -143,8 +144,8 @@ int main()
       break;
 
     case UPDATE_PUB: // TO DO
-      fprintf(stderr,"(SERVEUR %d) Requete UPDATE_PUB Recue de %d\n", getpid(),m.expediteur);
-      
+      fprintf(stderr, "(SERVEUR %d) Requete UPDATE_PUB Recue de %d\n", getpid(), m.expediteur);
+
       utilisationTableConnexions(&m, &reponse);
       break;
 
@@ -158,6 +159,8 @@ int main()
 
     case CADDIE: // TO DO
       fprintf(stderr, "(SERVEUR %d) Requete CADDIE reçue de %d\n", getpid(), m.expediteur);
+      utilisationTableConnexions(&m, &reponse);
+      envoiRequete(&m);
       break;
 
     case CANCEL: // TO DO
@@ -222,6 +225,11 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
         {
           strcpy(tab->connexions[i].nom, pM->data2);
           pReponse->expediteur = pM->expediteur;
+          // envoi une requete au caddie
+          tab->connexions[i].pidCaddie = creerProcessusFils(2, "./Caddie", "Caddie", buffer, NULL);
+          pReponse->type = tab->connexions[i].pidCaddie;
+          envoiRequete(pReponse);
+
           envoiRequete(pReponse);
         }
 
@@ -244,10 +252,10 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
       break;
 
     case UPDATE_PUB: // TO DO
-                    if(tab->connexions[i].pidFenetre > 0)
-                    {
-                      kill(tab->connexions[i].pidFenetre, SIGUSR2);
-                    }
+      if (tab->connexions[i].pidFenetre > 0)
+      {
+        kill(tab->connexions[i].pidFenetre, SIGUSR2);
+      }
 
       break;
 
@@ -258,6 +266,12 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
       break;
 
     case CADDIE: // TO DO
+      if (tab->connexions[i].pidFenetre = pM->expediteur)
+      {
+        pM->type = tab->connexions[i].pidCaddie;
+        i = 10;
+      }
+
       break;
 
     case CANCEL: // TO DO
@@ -393,16 +407,16 @@ MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeReque
   return tmp;
 }
 
-pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const char* arg2, const char* arg3)
+pid_t creerProcessusFils(int nbArg, const char *arg0, const char *arg1, const char *arg2, const char *arg3)
 {
   pid_t pTemp;
   pTemp = fork();
-  
-  if(pTemp == 0)
+
+  if (pTemp == 0)
   {
     if (nbArg == 1)
     {
-      if (execl(arg0,arg1,NULL) == -1)
+      if (execl(arg0, arg1, NULL) == -1)
       {
         perror("Erreur de execl()");
         exit(1);
@@ -411,7 +425,7 @@ pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const ch
 
     if (nbArg == 2)
     {
-      if (execl(arg0,arg1,arg2,NULL) == -1)
+      if (execl(arg0, arg1, arg2, NULL) == -1)
       {
         perror("Erreur de execl()");
         exit(1);
@@ -420,7 +434,7 @@ pid_t creerProcessusFils(int nbArg, const char* arg0, const char* arg1, const ch
 
     if (nbArg == 3)
     {
-      if (execl(arg0,arg1,arg2,arg3,NULL) == -1)
+      if (execl(arg0, arg1, arg2, arg3, NULL) == -1)
       {
         perror("Erreur de execl()");
         exit(1);
@@ -443,7 +457,7 @@ void handlerSIGINT(int sig)
   }
 
   /*PARTIE A DECOMMENTER PLUS TARD*/
-  
+
   fprintf(stderr, "Supression de la mémoire partagée\n");
 
   if (shmctl(idShm, IPC_RMID, NULL) == -1)
