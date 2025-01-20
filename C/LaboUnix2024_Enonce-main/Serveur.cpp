@@ -222,6 +222,7 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
 
         i = 10; // On casse la boucle
       }
+      break;
 
     case DECONNECT:
       if (tab->connexions[i].pidFenetre == pM->expediteur)
@@ -312,11 +313,11 @@ void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
 
 void login(MESSAGE *pM, MESSAGE *pReponse)
 {
-  if (pM->data1 == 1)
+  if (pM->data1 == 0)
   {
     if (estPresent(pM->data2))
     {
-      reponseLOGIN(pReponse, 0, LOGIN, "---Client deja existant !---");
+      reponseLOGIN(pReponse, 0, LOGIN, "---T'es qui ?--");
       utilisationTableConnexions(pM, pReponse);
     }
     else
