@@ -54,7 +54,8 @@ int main()
 
   // Mise en place de la publicité en mémoire partagée
   char pub[51];
-  strcpy(pub,"Bienvenue sur le site du Maraicher en ligne !");
+  //strcpy(pub,"Bienvenue sur le site du Maraicher en ligne !");
+  strcpy(pub,"Bienvenue sur le site de Mohammed et sara   !");
 
   for (int i=0 ; i<=50 ; i++) pShm[i] = ' ';
   pShm[51] = '\0';
