@@ -67,3 +67,4 @@ AccesBD: AccesBD.cpp
 clean:
 	@echo "Clean de tout..."
 	@rm -f *.o Gerant Client Serveur CreationBD Publicite Caddie AccesBD
+

@@ -11,493 +11,515 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
-#include "FichierClient.h" // contient les fonctions pour le fichier client
-#include "protocole.h"     // contient la cle et la structure d'un message
+#include "protocole.h" // contient la cle et la structure d'un message
 #include <cerrno>
-/*Handler de signaux*/
-void handlerSIGINT(int sig);
+#include "FichierClient.h"
+#include <setjmp.h>
 
-/*Fonction faite maison********************************************************************************************************************************************/
-void copieChaine(const char *aCopier, char *endroitCopie); // Va permettre de copier les chaines envoyer dans la fonction constructeurRequete et controle les tailles
-MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5);
-/*Permet de construire une requete en envoyent d'abord le Nombre d'élements que contiendra la requete suivie des champs correspondant dans la structure
-!!! ATTENTION Les champs non utulisées doivent etre a NULL ou nullptr (pour les char*)*/
-
-void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse);
-/*On utulisera ici une fonction qui traitera les requete afin de ne pas faire de boucle dans chaque CASE de la fonction main on passera donc l'adresse du message *pM
-et de la reponse *pReponse*/
-
-pid_t creerProcessusFils(int nbArg, const char *arg0, const char *arg1, const char *arg2, const char *arg3);
-/*Fonction qui va permettre de créer un procéssus fils et va le recouvrir (execl) prend en parametre le nombre d'argument qui seront passer a argv*/
-
-void login(MESSAGE *message, MESSAGE *reponse);                                         // fonction login va gerer la demande de LOGIN du client et faire les vérifications
-void envoiRequete(MESSAGE *pReponse);                                                   // fonction qui gere l'envoi de toute les requetes
-void envoiSignal(int pid, int typeSignal);                                              // fonction qui gere l'envoi d'un signal a un processus
-void reponseLOGIN(MESSAGE *pReponse, int typeClient, int typeRequete, const char *rep); // initialise le type de reponse a renvoyer au client pour le LOGIN
-/*****************************************************************************************************************************************************************/
-
-int idQ, idShm, idSem;
+int idQ,idShm,idSem;
 int fdPipe[2];
 TAB_CONNEXIONS *tab;
-char buffer[20];
-pid_t AccesBD;
+int idPub, idCad, ret, IdAcBD;
+sigjmp_buf contexte;
 
 void afficheTab();
+
+void handlerSIGINT(int);
+void HandlerSIGCHLD(int);
 
 int main()
 {
   // Armement des signaux
   // TO DO
-  fprintf(stderr, "Armement du signal SIGINT\n");
   struct sigaction A;
   A.sa_handler = handlerSIGINT;
   A.sa_flags = 0;
   sigemptyset(&A.sa_mask);
-  sigaction(SIGINT, &A, NULL);
+  sigaction(SIGINT,&A,NULL);
+
+  struct sigaction B;
+  B.sa_handler = HandlerSIGCHLD;
+  sigemptyset(&B.sa_mask);
+  B.sa_flags = 0;
+  sigaction(SIGCHLD,&B,NULL);
 
   // Creation des ressources
-  fprintf(stderr, "(SERVEUR) création de la mémoire partagée\n");
-  if ((idShm = shmget(CLE, 52, IPC_CREAT | IPC_EXCL | 0777)) == -1)
-  {
-    perror("(SERVEUR)Erreur de création de la mémoire partagée\n");
-    exit(1);
-  }
-
   // Creation de la file de message
-  fprintf(stderr, "(SERVEUR %d) Creation de la file de messages\n", getpid());
-  if ((idQ = msgget(CLE, IPC_CREAT | IPC_EXCL | 0600)) == -1) // CLE definie dans protocole.h
-  {
-    perror("(SERVEUR) Erreur de msgget");
-    exit(1);
-  }
+  fprintf(stderr,"(SERVEUR %d) Creation de la file de messages\n",getpid());
+  if ((idQ = msgget(CLE, IPC_CREAT | IPC_EXCL | 0600)) == -1) {
+    if (errno == EEXIST) { // Si la file existe déjà
+        idQ = msgget(CLE, 0); // Récupérer l'identifiant de la file existante
+        if (idQ != -1) {
+            msgctl(idQ, IPC_RMID, NULL); // Supprimer la file existante
+            fprintf(stderr, "(SERVEUR) File de messages existante supprimée\n");
+            idQ = msgget(CLE, IPC_CREAT | IPC_EXCL | 0600); // Recréer la file
+        }
+    }
+    if (idQ == -1) { // Si l'erreur persiste
+        perror("(SERVEUR) Erreur de msgget");
+        exit(1);
+    }
+}
+
 
   // TO BE CONTINUED
 
-  // Creation du pipe
-  // TO DO
-  if(pipe(fdPipe)==-1){
-    perror("(serveur) il ya un probleme lors de la creation de la pipe");
+  fprintf(stderr,"(SERVEUR %d) CREATION DU FICHIER SI CELA N'EST PAS DEJA ETAIT FAIT\n",getpid());
+
+  int fd = open(FICHIER_CLIENTS, O_WRONLY|O_CREAT|O_APPEND, 0664);
+
+  if(fd == -1)
+  {
+    perror("(SERVEUR) Erreur de open");
+    msgctl(idQ,IPC_RMID,NULL);
     exit(1);
   }
 
+  if (close(fd)) {
+    perror("Erreur de close()");
+  }
+
+  // Creation du pipe
+  // TO DO
+
+  fprintf(stderr,"(SERVEUR %d) Creation du pipe\n",getpid());
+
+  if (pipe(fdPipe))
+  { 
+    perror("Erreur de pipe"); 
+    exit(1); 
+  }
+
+  printf("(SERVEUR %d) fdPipe[0] = %d fPipe[1] : %d\n",getpid(),fdPipe[0],fdPipe[1]);
+
 
   // Initialisation du tableau de connexions
-  tab = (TAB_CONNEXIONS *)malloc(sizeof(TAB_CONNEXIONS));
+  tab = (TAB_CONNEXIONS*) malloc(sizeof(TAB_CONNEXIONS)); 
 
-  for (int i = 0; i < 6; i++)
+  for (int i=0 ; i<6 ; i++)
   {
     tab->connexions[i].pidFenetre = 0;
-    strcpy(tab->connexions[i].nom, "");
+    strcpy(tab->connexions[i].nom,"");
     tab->connexions[i].pidCaddie = 0;
   }
   tab->pidServeur = getpid();
   tab->pidPublicite = 0;
 
-  afficheTab();
+  //afficheTab();
 
   // Creation du processus Publicite (étape 2)
-  pid_t pPub = creerProcessusFils(1, "./Publicite", "Publicite", NULL, NULL);
-  tab->pidPublicite = pPub;
+  // TO DO
+  fprintf(stderr,"(SERVEUR %d) Creation du mémoire partagée\n",getpid());
+
+  if ((idShm = shmget(CLE,51,IPC_CREAT | IPC_EXCL | 0600)) == -1)
+  {
+    perror("Erreur de shmget");
+    exit(1);
+  }
+
+  fprintf(stderr,"(SERVEUR %d) Creation du processus publicite\n",getpid());
+
+  idPub = fork();
+
+  if (idPub == -1)
+  {
+    perror("Erreur de fork(1)");
+    exit(1);
+  }
+
+  if(!idPub) 
+  {
+    execl("./Publicite", "Publicite", NULL);
+  }
+
+  fprintf(stderr,"(SERVEUR %d) recupere pid du publicite: %d\n",getpid(), idPub);
+
+  tab->pidPublicite = idPub;
 
   // Creation du processus AccesBD (étape 4)
   // TO DO
-  AccesBD= creerProcessusFils(2,"./AccesBD","AccesBD",buffer,NULL);
-  tab->pidAccesBD = AccesBD;
+
+  fprintf(stderr,"(SERVEUR %d) Creation du processus AccesBD\n",getpid());
+
+  IdAcBD = fork();
+
+  if (IdAcBD == -1)
+  {
+    perror("Erreur de fork(1)");
+    exit(1);
+  }
+
+  if(!IdAcBD) 
+  {
+    char pipelecteur[2];
+    sprintf(pipelecteur, "%d", fdPipe[0]);
+
+    close(fdPipe[1]);
+    execl("./AccesBD", "AccesBD", pipelecteur, NULL);
+  }
+
+  fprintf(stderr,"(SERVEUR %d) recupere pid du AccesBD: %d\n",getpid(), IdAcBD);
+
+  tab->pidAccesBD = IdAcBD;
+
+  afficheTab();
 
   MESSAGE m;
   MESSAGE reponse;
+  int i;
 
-  while (1)
+  // Mise en place d’un point de retour du saut
+  if ((ret = sigsetjmp(contexte,1)) != 0)
   {
-    fprintf(stderr, "(SERVEUR %d) Attente d'une requete...\n", getpid());
-    if (msgrcv(idQ, &m, sizeof(MESSAGE) - sizeof(long), 1, 0) == -1)
+    printf("\nRetour du saut %d...\n",ret);
+  }
+
+  while(1)
+  {
+    if(m.requete != UPDATE_PUB) fprintf(stderr,"(SERVEUR %d) Attente d'une requete...\n",getpid());
+    
+    if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),1,0) == -1)
     {
-      if (errno == EINTR)
-      {
-        continue;
-      }
       perror("(SERVEUR) Erreur de msgrcv");
-      msgctl(idQ, IPC_RMID, NULL);
+      msgctl(idQ,IPC_RMID,NULL);
       exit(1);
     }
 
-    switch (m.requete)
+    switch(m.requete)
     {
-    case CONNECT: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete CONNECT reçue de %d\n", getpid(), m.expediteur);
+      case CONNECT :  // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete CONNECT reçue de %d\n",getpid(),m.expediteur);
 
-      utilisationTableConnexions(&m, &reponse); // On va traiter la requete dans la boucle de la fonction
-      break;
+                      for (i=0 ; i<6; i++)
+                      {
+                        if(tab->connexions[i].pidFenetre == 0)
+                        {
+                          tab->connexions[i].pidFenetre = m.expediteur;
 
-    case DECONNECT: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete DECONNECT reçue de %d\n", getpid(), m.expediteur);
+                          i = 6;
+                        }
+                      }
 
-      utilisationTableConnexions(&m, &reponse);
-      break;
+                      break;
 
-    case LOGIN: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete LOGIN reçue de %d : --%d--%s--%s--\n", getpid(), m.expediteur, m.data1, m.data2, m.data3);
+      case DECONNECT : // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete DECONNECT reçue de %d\n",getpid(),m.expediteur);
 
-      // gestion du login
-      login(&m, &reponse);
+                      for (int i=0 ; i<6; i++)
+                      {
+                        if(tab->connexions[i].pidFenetre == m.expediteur)
+                        {
+                          tab->connexions[i].pidFenetre = 0;
+                          
+                          i = 6;
+                        }
+                      }
 
-      // envoi de la reponse au client
-      envoiRequete(&reponse);
+                      break;
+      case LOGIN :    // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete LOGIN reçue de %d : --%d--%s--%s--\n",getpid(),m.expediteur,m.data1,m.data2,m.data3);
 
-      // envoi du signal SIGUSR1 pour faire afficher le message dans data4
-      envoiSignal(reponse.type, SIGUSR1);
+                      reponse = m;
 
-      break;
+                      reponse.type = reponse.expediteur;
+                      reponse.requete = LOGIN;
 
-    case LOGOUT: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete LOGOUT reçue de %d\n", getpid(), m.expediteur);
+                      int pos, veri;
 
-      utilisationTableConnexions(&m, &reponse);
-      break;
+                      i = 0;
 
-    case UPDATE_PUB: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete UPDATE_PUB Recue de %d\n", getpid(), m.expediteur);
+                      while(i < 6 && tab->connexions[i].pidFenetre != reponse.expediteur) i++;
 
-      utilisationTableConnexions(&m, &reponse);
-      break;
+                      if(reponse.data1 == 0)
+                      {
+                        pos = estPresent(reponse.data2);
 
-    case CONSULT: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete CONSULT reçue de %d\n", getpid(), m.expediteur);
-      utilisationTableConnexions(&m, &reponse);
-      envoiRequete(&reponse);
-      break;
+                        if(pos == -1)
+                        {
+                          strcpy(reponse.data4, " ---- ERREUR: Fichier n'existe pas ! ---- ");
+                          reponse.data1 = 1;
+                        }
+                        else
+                        {
+                          if(pos == 0) 
+                          {
+                            strcpy(reponse.data4," ---- Client inconnu… ---- ");
+                            reponse.data1 = 1;
+                          }
+                          else
+                          {
+                            veri = verifieMotDePasse(pos, reponse.data3);
 
-    case ACHAT: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete ACHAT reçue de %d\n", getpid(), m.expediteur);
-      break;
+                            if(veri == -1)
+                            {
+                              strcpy(reponse.data4," ---- ERREUR !!! ---- ");
+                              reponse.data1 = 1;
+                            }
+                            else
+                            {
+                              if(veri == 0) 
+                              {
+                                strcpy(reponse.data4," ---- Mot de passe incorrect… ---- ");
+                                reponse.data1 = 1;
+                              }
+                              else 
+                              {
+                                strcpy(reponse.data4," ----  Re-bonjour cher client ! ---- ");
+                                reponse.data1 = 0;
+                                strcpy(tab->connexions[i].nom, reponse.data2);
+                              }
+                            }
+                          }
+                        }
+                      }
+                      else
+                      {
+                        pos = estPresent(reponse.data2);
 
-    case CADDIE: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete CADDIE reçue de %d\n", getpid(), m.expediteur);
-      utilisationTableConnexions(&m, &reponse);
-      envoiRequete(&m);
-      break;
+                        if(pos == -1 || pos == 0)
+                        {
+                          ajouteClient(reponse.data2, reponse.data3);
+                          strcpy(reponse.data4," ---- Nouveau client créé : bienvenue ! ---- ");
+                          reponse.data1 = 0;
+                          strcpy(tab->connexions[i].nom, reponse.data2);
+                        }
+                        else 
+                        {
+                          strcpy(reponse.data4," ---- Client déjà existant ! ---- ");
+                          reponse.data1 = 1;
+                        }
+                      }
 
-    case CANCEL: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete CANCEL reçue de %d\n", getpid(), m.expediteur);
-      break;
+                      if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd");
+                        exit(1);
+                      }
 
-    case CANCEL_ALL: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete CANCEL_ALL reçue de %d\n", getpid(), m.expediteur);
-      break;
+                      kill(reponse.expediteur, SIGUSR1);
+                      fprintf(stderr,"(SERVEUR %d) MESSAGE ENVOYER A %d ",getpid(),reponse.expediteur);
 
-    case PAYER: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete PAYER reçue de %d\n", getpid(), m.expediteur);
-      break;
+                      if(reponse.data1 == 0)
+                      {
+                        fprintf(stderr,"(SERVEUR %d) Creation du processus Caddie\n", getpid());
 
-    case NEW_PUB: // TO DO
-      fprintf(stderr, "(SERVEUR %d) Requete NEW_PUB reçue de %d\n", getpid(), m.expediteur);
-      break;
+                        idCad = fork();
+
+                        if (idCad == -1)
+                        {
+                          perror("Erreur de fork(1)");
+                          exit(1);
+                        }
+
+                        if(!idCad) 
+                        {
+                          char pipeEcriture[2];
+                          sprintf(pipeEcriture, "%d", fdPipe[1]);
+
+                          close(fdPipe[0]);
+                          execl("./Caddie", "Caddie", pipeEcriture, NULL);
+                        }
+
+                        fprintf(stderr,"(SERVEUR %d) recupere pid du caddie: %d\n",getpid(), idCad);
+
+                        tab->connexions[i].pidCaddie = idCad;
+
+                        //envoie un message login
+
+                        reponse.type = idCad;
+                        reponse.expediteur = getpid();
+                        reponse.requete = LOGIN;
+
+                        if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                        {
+                            perror("Erreur de msgsnd");
+                            exit(1);
+                        }
+                      }
+
+                      break; 
+
+      case LOGOUT :   // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete LOGOUT reçue de %d\n",getpid(),m.expediteur);
+
+                      i = 0;
+
+                      while(i < 6 && tab->connexions[i].pidFenetre != m.expediteur) i++;
+
+                      if(i != 6)
+                      {
+                        if(tab->connexions[i].pidCaddie != 0)
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = getpid();
+                          reponse.requete = LOGOUT;
+
+                          if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgsnd");
+                            exit(1);
+                          }
+                        }
+                      }
+
+                      break;
+
+      case UPDATE_PUB :  // TO DO
+                      i = 0;
+
+                      while(i < 6)
+                      {
+                        if(tab->connexions[i].pidFenetre != 0) kill(tab->connexions[i].pidFenetre, SIGUSR2);
+                        i++;
+                      }
+
+                      break;
+
+      case CONSULT :  // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete CONSULT reçue de %d\n",getpid(),m.expediteur);
+
+                      i = 0;
+
+                      while(i < 6 && tab->connexions[i].pidFenetre != m.expediteur) i++;
+
+                      reponse.type = tab->connexions[i].pidCaddie;
+                      reponse.expediteur = m.expediteur;
+                      reponse.data1 = m.data1;
+                      reponse.requete = CONSULT;
+
+                      if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                          perror("Erreur de msgsnd");
+                          exit(1);
+                      }
+
+
+                      break;
+
+      case ACHAT :    // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
+
+                      i = 0;
+
+                      while(i < 6 && tab->connexions[i].pidFenetre != m.expediteur) i++;
+
+                      reponse.type = tab->connexions[i].pidCaddie;
+                      reponse.expediteur = m.expediteur;
+                      reponse.data1 = m.data1;
+                      strcpy(reponse.data2, m.data2);
+                      reponse.requete = ACHAT;
+
+                      if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                          perror("Erreur de msgsnd");
+                          exit(1);
+                      }
+
+                      break;
+
+      case CADDIE :   // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
+
+                      i = 0;
+
+                      while(i < 6 && tab->connexions[i].pidFenetre != m.expediteur) i++;
+
+                      reponse.type = tab->connexions[i].pidCaddie;
+                      reponse.expediteur = m.expediteur;
+                      reponse.requete = CADDIE;
+
+                      if (msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                          perror("Erreur de msgsnd");
+                          exit(1);
+                      }
+
+                      break;
+
+      case CANCEL :   // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
+                      break;
+
+      case CANCEL_ALL : // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
+                      break;
+
+      case PAYER : // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete PAYER reçue de %d\n",getpid(),m.expediteur);
+                      break;
+
+      case NEW_PUB :  // TO DO
+                      fprintf(stderr,"(SERVEUR %d) Requete NEW_PUB reçue de %d\n",getpid(),m.expediteur);
+                      break;
     }
-    afficheTab();
+    if(m.requete != UPDATE_PUB) afficheTab();
   }
 }
 
 void afficheTab()
 {
-  fprintf(stderr, "Pid Serveur   : %d\n", tab->pidServeur);
-  fprintf(stderr, "Pid Publicite : %d\n", tab->pidPublicite);
-  fprintf(stderr, "Pid AccesBD   : %d\n", tab->pidAccesBD);
-  for (int i = 0; i < 6; i++)
-    fprintf(stderr, "%6d -%20s- %6d\n", tab->connexions[i].pidFenetre,
-            tab->connexions[i].nom,
-            tab->connexions[i].pidCaddie);
-  fprintf(stderr, "\n");
+  fprintf(stderr,"Pid Serveur   : %d\n",tab->pidServeur);
+  fprintf(stderr,"Pid Publicite : %d\n",tab->pidPublicite);
+  fprintf(stderr,"Pid AccesBD   : %d\n",tab->pidAccesBD);
+  for (int i=0 ; i<6 ; i++)
+    fprintf(stderr,"%6d -%20s- %6d\n",tab->connexions[i].pidFenetre,
+                                                      tab->connexions[i].nom,
+                                                      tab->connexions[i].pidCaddie);
+  fprintf(stderr,"\n");
 }
 
-void utilisationTableConnexions(MESSAGE *pM, MESSAGE *pReponse)
+void handlerSIGINT(int)
 {
-  for (int i = 0; i < 6; i++)
+  kill(idPub, SIGKILL); //tue le processus publicite
+
+  int i = 0;
+
+  while(i < 0)
   {
-    switch (pM->requete)
-    {
-    case CONNECT:
-      if (tab->connexions[i].pidFenetre == 0)
-      {
-        tab->connexions[i].pidFenetre = pM->expediteur; // On attribue le pid de l'expediteur (client) a une ligne de la table de connexions
-
-        i = 10; // On casse la boucle
-      }
-      break;
-
-    case DECONNECT:
-      if (tab->connexions[i].pidFenetre == pM->expediteur)
-      {
-        tab->connexions[i].pidFenetre = 0; // 0 car si la valeur = 0 le champs = vide
-
-        i = 10;
-      }
-      break;
-
-    case LOGIN:
-      if (tab->connexions[i].pidFenetre == pM->expediteur)
-      {
-        if (pReponse->data1 == 1)
-        {
-          strcpy(tab->connexions[i].nom, pM->data2);
-          pReponse->expediteur = pM->expediteur;
-          // envoi une requete au caddie
-          tab->connexions[i].pidCaddie = creerProcessusFils(2, "./Caddie", "Caddie", buffer, NULL);
-          pReponse->type = tab->connexions[i].pidCaddie;
-          envoiRequete(pReponse);
-        }
-
-        pReponse->type = pM->expediteur;
-
-        i = 10;
-      }
-      break;
-
-    case LOGOUT:
-      if (tab->connexions[i].pidFenetre == pM->expediteur)
-      {
-        pReponse->requete = LOGOUT;
-        if (pReponse->type != 0)
-          envoiRequete(pReponse);
-        strcpy(tab->connexions[i].nom, "");
-
-        i = 10;
-      }
-      break;
-
-    case UPDATE_PUB: // TO DO
-      if (tab->connexions[i].pidFenetre > 0)
-      {
-        kill(tab->connexions[i].pidFenetre, SIGUSR2);
-      }
-
-      break;
-
-    case CONSULT: // TO DO
-      if (tab->connexions[i].pidFenetre == pM->expediteur)
-      {
-        pReponse->requete = CONSULT;
-        pReponse->type = tab->connexions[i].pidCaddie;
-        pReponse->data1 = pM->data1;
-        pReponse->expediteur = pM->expediteur;
-        strcpy(pReponse->data2, pM->data2);
-        i = 10;
-      }
-      break;
-
-    case ACHAT: // TO DO
-      break;
-
-    case CADDIE: // TO DO
-      if (tab->connexions[i].pidFenetre = pM->expediteur)
-      {
-        pM->type = tab->connexions[i].pidCaddie;
-        i = 10;
-      }
-
-      break;
-
-    case CANCEL: // TO DO
-      break;
-
-    case CANCEL_ALL: // TO DO
-      break;
-
-    case PAYER: // TO DO
-      break;
-
-    case NEW_PUB: // TO DO
-      break;
-    }
-  }
-}
-
-void login(MESSAGE *pM, MESSAGE *pReponse)
-{
-  if (pM->data1 == 0)
-  {
-    if (estPresent(pM->data2))
-    {
-      reponseLOGIN(pReponse, 0, LOGIN, "---T'es qui ?--");
-      utilisationTableConnexions(pM, pReponse);
-    }
-    else
-    {
-      ajouteClient(pM->data2, pM->data3);
-      reponseLOGIN(pReponse, 1, LOGIN, "---Nouvel client cree: bienvenue !---");
-      utilisationTableConnexions(pM, pReponse);
-    }
-  }
-  else
-  {
-    int position = estPresent(pM->data2);
-    if (position)
-    {
-      if (verifieMotDePasse(position, pM->data3))
-      {
-        reponseLOGIN(pReponse, 1, LOGIN, "---Re-bonjour cher client !---");
-        utilisationTableConnexions(pM, pReponse);
-      }
-      else
-      {
-        reponseLOGIN(pReponse, 0, LOGIN, "---Mot de passe incorrect---");
-        utilisationTableConnexions(pM, pReponse);
-      }
-    }
-    else
-    {
-      reponseLOGIN(pReponse, 0, LOGIN, "---Utilisateur inconnu---");
-      utilisationTableConnexions(pM, pReponse);
-    }
-  }
-}
-
-void reponseLOGIN(MESSAGE *pReponse, int typeClient, int typeRequete, const char *rep)
-{
-  pReponse->requete = typeRequete;
-  pReponse->data1 = typeClient;
-  strcpy(pReponse->data4, rep);
-}
-
-void envoiRequete(MESSAGE *pReponse)
-{
-
-  if (msgsnd(idQ, pReponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
-  {
-    perror("(SERVEUR)Erreur envoi reponse\n");
-    exit(1);
-  }
-}
-
-void envoiSignal(int pid, int typeSignal)
-{
-  if (kill(pid, typeSignal) == -1)
-  {
-    perror("erreur KILL");
-    exit(1);
-  }
-}
-
-void copieChaine(const char *aCopier, char *endroitCopie)
-{
-  if (strlen(aCopier) <= sizeof(endroitCopie) - 1)
-  {
-    strcpy(endroitCopie, aCopier);
+    if(tab->connexions[i].pidCaddie != 0)  kill(tab->connexions[i].pidCaddie, SIGKILL); // tue tout les processus caddie si il ne sont pas deja terminer
   }
 
-  else
+  close(fdPipe[0]);
+  close(fdPipe[1]);
+
+  if(msgctl(idQ,IPC_RMID,NULL) == -1)
   {
-    fprintf(stderr, "Erreur :dépasse la taille maximale (caractères autorisés).\n");
-  }
-}
-
-MESSAGE constructeurRequete(int nbElem, long type, int expediteur, int typeRequete, int data1, const char *data2, const char *data3, const char *data4, float data5)
-{
-  MESSAGE tmp;
-
-  if (nbElem >= 3)
-  {
-    tmp.type = type;
-    tmp.expediteur = expediteur;
-    tmp.requete = typeRequete;
-  }
-
-  if (nbElem >= 4)
-  {
-    tmp.data1 = data1;
-  }
-
-  if (nbElem >= 5)
-  {
-    copieChaine(data2, tmp.data2);
-  }
-
-  if (nbElem >= 6)
-  {
-    copieChaine(data3, tmp.data3);
-  }
-
-  if (nbElem >= 7)
-  {
-    copieChaine(data4, tmp.data4);
-  }
-
-  if (nbElem >= 8)
-  {
-    tmp.data5 = data5;
-  }
-
-  return tmp;
-}
-
-pid_t creerProcessusFils(int nbArg, const char *arg0, const char *arg1, const char *arg2, const char *arg3)
-{
-  pid_t pTemp;
-  pTemp = fork();
-
-  if (pTemp == 0)
-  {
-    if (nbArg == 1)
-    {
-      if (execl(arg0, arg1, NULL) == -1)
-      {
-        perror("Erreur de execl()");
-        exit(1);
-      }
-    }
-
-    if (nbArg == 2)
-    {
-      if (execl(arg0, arg1, arg2, NULL) == -1)
-      {
-        perror("Erreur de execl()");
-        exit(1);
-      }
-    }
-
-    if (nbArg == 3)
-    {
-      if (execl(arg0, arg1, arg2, arg3, NULL) == -1)
-      {
-        perror("Erreur de execl()");
-        exit(1);
-      }
-    }
-  }
-
-  return pTemp;
-}
-
-void handlerSIGINT(int sig)
-{
-  fprintf(stderr, "\nSuppression de la file de message (%d)\n", idQ);
-
-  // kill(tab->pidPublicite, SIGINT);
-  if (msgctl(idQ, IPC_RMID, NULL) == -1)
-  {
-    perror("(SERVEUR)Erreur de msgctl(2), File de message non supprimé\n");
+    perror("Erreur de msgctl");
     exit(1);
   }
 
-  /*PARTIE A DECOMMENTER PLUS TARD*/
-
-  fprintf(stderr, "Supression de la mémoire partagée\n");
-
-  if (shmctl(idShm, IPC_RMID, NULL) == -1)
+  if(shmctl(idShm,IPC_RMID,NULL) == -1)
   {
-    perror("(SERVEUR)Erreur de suppresion de la mémoire partagée\n");
+    perror("Erreur de shmctl");
     exit(1);
   }
 
-  // Fermeture du pipe
-  if (close(fdPipe[0]) == -1)
-  {
-    perror("Erreur fermeture sortie du pipe");
-    exit(1);
-  }
-
-  if (close(fdPipe[1]) == -1)
-  {
-    perror("Erreur fermeture entree du pipe");
-    exit(1);
-  }
+  exit(0);
 }
+
+void HandlerSIGCHLD(int)
+{
+  int id, status, i;
+  id = wait(&status);
+
+  fprintf(stderr, "\n(SERVEUR) Suppression du fils %d de la table des processus\n", id);
+  
+  if (WIFEXITED(status))
+  {
+    //printf("\nexit = %d \n", WEXITSTATUS(status));
+
+    i = 0;
+
+    while(i < 6 && tab->connexions[i].pidCaddie != id) i++;
+    
+    if(i != 6)
+    {
+      tab->connexions[i].pidCaddie = 0;
+      strcpy(tab->connexions[i].nom,"");
+      afficheTab();
+    }
+  }
+
+  siglongjmp(contexte, id);
+}
+

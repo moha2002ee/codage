@@ -1,36 +1,29 @@
 #ifndef FICHIER_CLIENT_H
 #define FICHIER_CLIENT_H
 
-#define FICHIER_CLIENT "clients.dat"
+#define FICHIER_CLIENTS "clients.dat"
 
-// Pour le fichier des utilisateurs
+// Structure pour le client
 typedef struct
 {
-  char  nom[20];
-  int   hash;
+  char  nom[20];  // Nom du client
+  int   hash;     // Hash du mot de passe
 } CLIENT;
 
-int estPresent(const char* nom);
-// retourne -1 en cas d'erreur
-//           0 si pas trouve
-//           la position (1,2,3, ...) dans le fichier si trouve
+// Déclaration des fonctions
+int estPresent(const char* nom); 
+// retourne -1 en cas d'erreur, 0 si non trouvé, position dans le fichier si trouvé
 
 int hash(const char* motDePasse);
-// calcul le hash du mot de passe = (somme des codes ASCII) % 97
+// Calcule le hash du mot de passe = (somme pondérée des codes ASCII) % 97
 
 void ajouteClient(const char* nom, const char* motDePasse);
-// ajoute un nouvel utilisateur à la fin du fichier
-// crée le fichier su celui-ci n'existe pas
+// Ajoute un nouveau client à la fin du fichier
 
 int verifieMotDePasse(int pos, const char* motDePasse);
-// reçoit la position de l'utilisateur obligatoirement présent dans le fichier et un mot de passe
-// retourne 1 si le mot de passe est correct
-//          0 sinon
-//         -1 en cas d'erreur 
+// Vérifie si le mot de passe est correct pour un client à une position donnée
 
-int listeCLIENT(CLIENT *vecteur);
-// reçoit l'adresse d'un vecteur d'utilisateurs suffisament grand pour recevoir le contenu du fichier
-// retourne le nombre d'utilisateurs présents dans le fichier
-//          -1 si le fichier n'existe pas
+int listeClients(CLIENT *vecteur);
+// Liste les clients du fichier dans le vecteur passé en argument
 
 #endif
